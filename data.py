@@ -1,0 +1,32 @@
+import yfinance as yf
+import pandas as pd
+
+
+def fetch_ohlcv(ticker, start, end, interval="1d"):
+    raw = yf.download(ticker, start=start, end=end, interval=interval, auto_adjust=True, progress=False)
+    if raw.empty:
+        raise ValueError(f"No data for '{ticker}' between {start} and {end}.")
+    if isinstance(raw.columns, pd.MultiIndex):
+        raw.columns = raw.columns.get_level_values(0)
+    raw = raw[["Open", "High", "Low", "Close", "Volume"]].copy()
+    raw.dropna(subset=["Close"], inplace=True)
+    raw.index = pd.DatetimeIndex(raw.index).tz_localize(None)
+    raw.index.name = "Date"
+    return raw
+
+
+def fetch_multiple(tickers, start, end):
+    result = {}
+    for t in tickers:
+        try:
+            result[t] = fetch_ohlcv(t, start, end)
+            print(f"  ✓ {t:15s}  {len(result[t])} rows")
+        except ValueError as e:
+            print(f"  ✗ {t:15s}  SKIPPED — {e}")
+    return result
+
+
+def validate_data(df, min_rows=100):
+    assert len(df) >= min_rows, f"Too few rows ({len(df)}). Minimum: {min_rows}."
+    assert df["Close"].isna().sum() == 0, "NaN values in Close prices."
+    assert (df["Close"] > 0).all(), "Non-positive Close prices detected."
